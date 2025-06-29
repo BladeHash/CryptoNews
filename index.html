@@ -56,17 +56,31 @@
             100% { transform: rotate(360deg); }
         }
         
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
         .news-item {
             background: #1a1a1a;
             border: 1px solid #333;
             border-radius: 8px;
             padding: 16px;
             margin-bottom: 12px;
-            transition: background 0.2s;
+            transition: all 0.3s ease;
+            cursor: pointer;
         }
         
         .news-item:hover {
             background: #2a2a2a;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.1);
+        }
+        
+        .news-item.new-article {
+            border-color: #10b981;
+            box-shadow: 0 0 20px rgba(16, 185, 129, 0.3);
+            animation: pulse 2s ease-in-out;
         }
         
         .news-title {
@@ -80,12 +94,23 @@
         .news-meta {
             font-size: 12px;
             color: #888;
-            margin-bottom: 4px;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 8px;
         }
         
         .news-source {
             color: #60a5fa;
             font-weight: 500;
+        }
+        
+        .news-excerpt {
+            font-size: 14px;
+            color: #bbb;
+            line-height: 1.4;
+            margin-top: 8px;
         }
         
         .importance-high { border-left: 4px solid #ef4444; }
@@ -102,6 +127,7 @@
             cursor: pointer;
             font-size: 14px;
             transition: all 0.2s;
+            white-space: nowrap;
         }
         
         .category-btn:hover {
@@ -123,6 +149,11 @@
             padding: 20px;
             border-bottom: 1px solid #333;
             margin-bottom: 20px;
+            position: sticky;
+            top: 0;
+            background: rgba(0, 0, 0, 0.95);
+            backdrop-filter: blur(10px);
+            z-index: 100;
         }
         
         .title {
@@ -140,6 +171,27 @@
             font-size: 14px;
         }
         
+        .live-indicator {
+            display: inline-flex;
+            align-items: center;
+            background: #10b981;
+            color: black;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+            margin-left: 8px;
+        }
+        
+        .live-dot {
+            width: 6px;
+            height: 6px;
+            background: #ef4444;
+            border-radius: 50%;
+            margin-right: 4px;
+            animation: pulse 1s infinite;
+        }
+        
         .install-btn {
             background: #10b981;
             color: black;
@@ -150,10 +202,59 @@
             font-weight: 600;
             cursor: pointer;
             margin-left: 16px;
+            transition: all 0.2s;
         }
         
         .install-btn:hover {
             background: #059669;
+            transform: scale(1.05);
+        }
+        
+        .update-status {
+            font-size: 10px;
+            color: #6b7280;
+            font-family: monospace;
+        }
+        
+        .category-container {
+            display: flex;
+            gap: 8px;
+            overflow-x: auto;
+            padding-bottom: 8px;
+        }
+        
+        .category-container::-webkit-scrollbar {
+            height: 4px;
+        }
+        
+        .category-container::-webkit-scrollbar-track {
+            background: #1a1a1a;
+        }
+        
+        .category-container::-webkit-scrollbar-thumb {
+            background: #374151;
+            border-radius: 2px;
+        }
+        
+        .error-message {
+            background: #7f1d1d;
+            border: 1px solid #ef4444;
+            color: #fca5a5;
+            padding: 12px;
+            border-radius: 6px;
+            margin: 12px 0;
+            font-size: 14px;
+        }
+        
+        .retry-btn {
+            background: #ef4444;
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            cursor: pointer;
+            margin-left: 8px;
         }
     </style>
 </head>
@@ -161,18 +262,22 @@
     <div id="app">
         <div class="loading">
             <div class="spinner"></div>
-            <div>Loading Crypto News...</div>
+            <div>Loading Live Crypto News...</div>
         </div>
     </div>
 
     <script>
-        // Simple app without external dependencies
-        class CryptoNewsApp {
+        class LiveCryptoNewsApp {
             constructor() {
                 this.selectedCategory = 'all';
-                this.displayedArticles = 10;
+                this.displayedArticles = 20;
                 this.deferredPrompt = null;
                 this.showInstallButton = false;
+                this.allNews = [];
+                this.lastUpdate = new Date();
+                this.updateInterval = null;
+                this.isLoading = false;
+                this.errors = [];
                 
                 this.categories = [
                     { id: 'all', label: 'All News', icon: '📰' },
@@ -182,31 +287,49 @@
                     { id: 'coins', label: 'Top 100 Coins', icon: '🪙' }
                 ];
                 
-                this.allNews = [
-                    { id: 1, title: 'SEC Approves Spot Bitcoin ETF Applications from BlackRock and Fidelity', source: 'CoinDesk', category: 'institutions', timeAgo: '2h ago', importance: 'high' },
-                    { id: 2, title: 'European Union Finalizes MiCA Regulation Implementation Timeline', source: 'The Block', category: 'government', timeAgo: '3h ago', importance: 'high' },
-                    { id: 3, title: 'Ethereum Shanghai Upgrade Successfully Activates, Enables Staking Withdrawals', source: 'Decrypt', category: 'coins', timeAgo: '4h ago', importance: 'high' },
-                    { id: 4, title: 'JPMorgan Chase Launches Digital Asset Trading Desk for Institutional Clients', source: 'Bitcoin Magazine', category: 'institutions', timeAgo: '5h ago', importance: 'high' },
-                    { id: 5, title: 'US House Passes Stablecoin Regulation Bill with Bipartisan Support', source: 'CoinTelegraph', category: 'government', timeAgo: '6h ago', importance: 'high' },
-                    { id: 6, title: 'Solana Network Experiences Brief Outage, Recovers Within 4 Hours', source: 'Blockworks', category: 'coins', timeAgo: '7h ago', importance: 'medium' },
-                    { id: 7, title: 'Japan Central Bank Announces Digital Yen Pilot Program Timeline', source: 'Crypto Briefing', category: 'government', timeAgo: '8h ago', importance: 'medium' },
-                    { id: 8, title: 'Goldman Sachs Expands Bitcoin Custody Services to Retail Clients', source: 'CoinDesk', category: 'institutions', timeAgo: '9h ago', importance: 'high' },
-                    { id: 9, title: 'Cardano Launches Smart Contract Capabilities with Alonzo Upgrade', source: 'AMBCrypto', category: 'coins', timeAgo: '10h ago', importance: 'medium' },
-                    { id: 10, title: 'El Salvador Adds 100 More Bitcoin to National Treasury', source: 'Bitcoin.com News', category: 'government', timeAgo: '11h ago', importance: 'medium' },
-                    { id: 11, title: 'Binance Receives Regulatory Approval in Dubai for Crypto Operations', source: 'CoinTelegraph', category: 'institutions', timeAgo: '12h ago', importance: 'medium' },
-                    { id: 12, title: 'Polygon Network Announces zkEVM Mainnet Beta Launch Date', source: 'Decrypt', category: 'coins', timeAgo: '13h ago', importance: 'medium' },
-                    { id: 13, title: 'Federal Reserve Chair Comments on Digital Dollar Development', source: 'The Block', category: 'government', timeAgo: '14h ago', importance: 'high' },
-                    { id: 14, title: 'Chainlink Partners with Swift for Cross-Border Payment Pilot', source: 'Blockworks', category: 'coins', timeAgo: '15h ago', importance: 'medium' },
-                    { id: 15, title: 'Fidelity Increases Bitcoin Holdings by 25% in Q4 2024', source: 'Bitcoin Magazine', category: 'institutions', timeAgo: '16h ago', importance: 'high' }
+                // RSS Feed sources (same as CryptoPanic uses)
+                this.newsFeeds = [
+                    {
+                        name: 'CoinDesk',
+                        url: 'https://www.coindesk.com/arc/outboundfeeds/rss/',
+                        category: 'general'
+                    },
+                    {
+                        name: 'CoinTelegraph',
+                        url: 'https://cointelegraph.com/rss',
+                        category: 'general'
+                    },
+                    {
+                        name: 'Decrypt',
+                        url: 'https://decrypt.co/feed',
+                        category: 'general'
+                    },
+                    {
+                        name: 'The Block',
+                        url: 'https://www.theblock.co/rss.xml',
+                        category: 'general'
+                    },
+                    {
+                        name: 'Bitcoin Magazine',
+                        url: 'https://bitcoinmagazine.com/.rss/full/',
+                        category: 'coins'
+                    },
+                    {
+                        name: 'Blockworks',
+                        url: 'https://blockworks.co/feed/',
+                        category: 'general'
+                    }
                 ];
                 
                 this.init();
             }
             
-            init() {
+            async init() {
                 this.setupPWA();
+                await this.loadInitialNews();
                 this.render();
                 this.attachEventListeners();
+                this.startAutoUpdate();
             }
             
             setupPWA() {
@@ -226,14 +349,245 @@
                 }
             }
             
-            getFilteredNews() {
-                if (this.selectedCategory === 'all') {
-                    return this.allNews;
-                } else if (this.selectedCategory === 'priority') {
-                    return this.allNews.filter(article => article.importance === 'high' || article.importance === 'medium');
-                } else {
-                    return this.allNews.filter(article => article.category === this.selectedCategory);
+            async loadInitialNews() {
+                this.isLoading = true;
+                this.errors = [];
+                
+                try {
+                    const allArticles = [];
+                    
+                    // Fetch from multiple sources in parallel
+                    const fetchPromises = this.newsFeeds.map(feed => this.fetchFeedNews(feed));
+                    const results = await Promise.allSettled(fetchPromises);
+                    
+                    results.forEach((result, index) => {
+                        if (result.status === 'fulfilled') {
+                            allArticles.push(...result.value);
+                        } else {
+                            this.errors.push(`Failed to load ${this.newsFeeds[index].name}: ${result.reason}`);
+                        }
+                    });
+                    
+                    // Sort by date (newest first) and remove duplicates
+                    this.allNews = this.removeDuplicates(allArticles)
+                        .sort((a, b) => new Date(b.publishDate) - new Date(a.publishDate))
+                        .slice(0, 100); // Keep only latest 100 articles
+                    
+                    this.lastUpdate = new Date();
+                    
+                } catch (error) {
+                    this.errors.push(`General error: ${error.message}`);
                 }
+                
+                this.isLoading = false;
+            }
+            
+            async fetchFeedNews(feed) {
+                try {
+                    // Use AllOrigins to bypass CORS
+                    const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(feed.url)}`;
+                    const response = await fetch(proxyUrl);
+                    const data = await response.json();
+                    
+                    if (!data.contents) {
+                        throw new Error('No content received');
+                    }
+                    
+                    // Parse RSS/XML
+                    const parser = new DOMParser();
+                    const xmlDoc = parser.parseFromString(data.contents, 'text/xml');
+                    
+                    // Handle both RSS and Atom feeds
+                    const items = xmlDoc.querySelectorAll('item, entry');
+                    const articles = [];
+                    
+                    items.forEach((item, index) => {
+                        if (index < 10) { // Limit per source
+                            const article = this.parseRSSItem(item, feed);
+                            if (article) {
+                                articles.push(article);
+                            }
+                        }
+                    });
+                    
+                    return articles;
+                    
+                } catch (error) {
+                    throw new Error(`${feed.name}: ${error.message}`);
+                }
+            }
+            
+            parseRSSItem(item, feed) {
+                try {
+                    const title = this.getTextContent(item, 'title');
+                    const link = this.getTextContent(item, 'link, guid');
+                    const description = this.getTextContent(item, 'description, summary, content');
+                    const pubDate = this.getTextContent(item, 'pubDate, published, updated');
+                    
+                    if (!title || !link) return null;
+                    
+                    // Calculate time ago
+                    const publishDate = new Date(pubDate || Date.now());
+                    const timeAgo = this.getTimeAgo(publishDate);
+                    
+                    // Auto-categorize based on keywords
+                    const category = this.categorizeArticle(title, description);
+                    const importance = this.calculateImportance(title, description);
+                    
+                    return {
+                        id: this.generateId(title + link),
+                        title: this.cleanText(title),
+                        link: link,
+                        excerpt: this.cleanText(description).substring(0, 200) + '...',
+                        source: feed.name,
+                        publishDate: publishDate,
+                        timeAgo: timeAgo,
+                        category: category,
+                        importance: importance,
+                        isNew: (Date.now() - publishDate.getTime()) < 3600000 // New if less than 1 hour old
+                    };
+                    
+                } catch (error) {
+                    console.warn('Error parsing RSS item:', error);
+                    return null;
+                }
+            }
+            
+            getTextContent(item, selectors) {
+                const selectorList = selectors.split(', ');
+                for (const selector of selectorList) {
+                    const element = item.querySelector(selector);
+                    if (element) {
+                        return element.textContent || element.getAttribute('href') || '';
+                    }
+                }
+                return '';
+            }
+            
+            cleanText(text) {
+                if (!text) return '';
+                return text
+                    .replace(/<[^>]*>/g, '') // Remove HTML tags
+                    .replace(/\s+/g, ' ') // Normalize whitespace
+                    .trim();
+            }
+            
+            categorizeArticle(title, description) {
+                const text = (title + ' ' + description).toLowerCase();
+                
+                if (text.match(/\b(sec|regulation|government|congress|bill|law|legal|court|fed|federal reserve|treasury|biden|trump|policy)\b/)) {
+                    return 'government';
+                }
+                
+                if (text.match(/\b(jpmorgan|goldman|bank|institutional|wall street|fidelity|blackrock|grayscale|coinbase|kraken|binance|etf|fund)\b/)) {
+                    return 'institutions';
+                }
+                
+                if (text.match(/\b(bitcoin|ethereum|btc|eth|altcoin|defi|nft|mining|staking|upgrade|fork)\b/)) {
+                    return 'coins';
+                }
+                
+                return 'general';
+            }
+            
+            calculateImportance(title, description) {
+                const text = (title + ' ' + description).toLowerCase();
+                
+                // High importance keywords
+                if (text.match(/\b(breaking|urgent|major|significant|approved|banned|launch|hack|crash|surge|all-time high|ath|regulation|sec)\b/)) {
+                    return 'high';
+                }
+                
+                // Medium importance keywords
+                if (text.match(/\b(announces|partnership|upgrade|update|investment|funding|acquisition|expands)\b/)) {
+                    return 'medium';
+                }
+                
+                return 'low';
+            }
+            
+            generateId(str) {
+                let hash = 0;
+                for (let i = 0; i < str.length; i++) {
+                    const char = str.charCodeAt(i);
+                    hash = ((hash << 5) - hash) + char;
+                    hash = hash & hash; // Convert to 32-bit integer
+                }
+                return Math.abs(hash);
+            }
+            
+            getTimeAgo(date) {
+                const now = new Date();
+                const diffInMinutes = Math.floor((now - date) / (1000 * 60));
+                
+                if (diffInMinutes < 1) return 'Just now';
+                if (diffInMinutes < 60) return `${diffInMinutes}m ago`;
+                
+                const diffInHours = Math.floor(diffInMinutes / 60);
+                if (diffInHours < 24) return `${diffInHours}h ago`;
+                
+                const diffInDays = Math.floor(diffInHours / 24);
+                return `${diffInDays}d ago`;
+            }
+            
+            removeDuplicates(articles) {
+                const seen = new Set();
+                return articles.filter(article => {
+                    const key = article.title.toLowerCase().substring(0, 50);
+                    if (seen.has(key)) {
+                        return false;
+                    }
+                    seen.add(key);
+                    return true;
+                });
+            }
+            
+            getFilteredNews() {
+                let filtered = this.allNews;
+                
+                if (this.selectedCategory === 'priority') {
+                    filtered = filtered.filter(article => 
+                        article.importance === 'high' || article.importance === 'medium'
+                    );
+                } else if (this.selectedCategory !== 'all') {
+                    filtered = filtered.filter(article => 
+                        article.category === this.selectedCategory
+                    );
+                }
+                
+                return filtered;
+            }
+            
+            startAutoUpdate() {
+                // Update every 5 minutes
+                this.updateInterval = setInterval(() => {
+                    this.updateNews();
+                }, 5 * 60 * 1000);
+            }
+            
+            async updateNews() {
+                if (this.isLoading) return;
+                
+                console.log('Updating news...');
+                const oldCount = this.allNews.length;
+                await this.loadInitialNews();
+                const newCount = this.allNews.length;
+                
+                if (newCount > oldCount) {
+                    console.log(`Added ${newCount - oldCount} new articles`);
+                    // Mark new articles
+                    this.allNews.slice(0, newCount - oldCount).forEach(article => {
+                        article.isNew = true;
+                    });
+                }
+                
+                this.render();
+                
+                // Remove new highlighting after 30 seconds
+                setTimeout(() => {
+                    this.allNews.forEach(article => article.isNew = false);
+                    this.render();
+                }, 30000);
             }
             
             handleInstall() {
@@ -255,25 +609,38 @@
                 const app = document.getElementById('app');
                 app.innerHTML = `
                     <div class="header">
-                        <div style="display: flex; align-items: center; justify-content: space-between;">
+                        <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px;">
                             <div>
-                                <div class="title">Crypto News</div>
-                                <div class="subtitle">Latest cryptocurrency news and updates</div>
+                                <div style="display: flex; align-items: center;">
+                                    <div class="title">Crypto News</div>
+                                    <div class="live-indicator">
+                                        <div class="live-dot"></div>
+                                        LIVE
+                                    </div>
+                                </div>
+                                <div class="subtitle">Latest cryptocurrency news • Auto-updating every 5min</div>
+                                <div class="update-status">Last updated: ${this.lastUpdate.toLocaleTimeString()}</div>
                             </div>
                             <div style="display: flex; align-items: center;">
-                                <div style="text-align: right; margin-right: 16px;">
-                                    <div style="font-size: 12px; color: #9ca3af;">Live Updates</div>
-                                    <div style="font-size: 10px; color: #10b981; font-family: monospace;">Updated 5min ago</div>
-                                </div>
                                 ${this.showInstallButton ? '<button class="install-btn" onclick="app.handleInstall()">📱 Install App</button>' : ''}
                             </div>
                         </div>
                     </div>
                     
                     <div style="padding: 0 20px;">
+                        ${this.errors.length > 0 ? `
+                            <div class="error-message">
+                                <div>⚠️ Some news sources failed to load:</div>
+                                ${this.errors.slice(0, 3).map(error => `<div style="margin-top: 4px;">• ${error}</div>`).join('')}
+                                <button class="retry-btn" onclick="app.updateNews()">Retry</button>
+                            </div>
+                        ` : ''}
+                        
                         <div style="margin-bottom: 20px;">
-                            <div style="color: #9ca3af; font-size: 14px; margin-bottom: 8px;">Categories</div>
-                            <div style="display: flex; flex-wrap: wrap;">
+                            <div style="color: #9ca3af; font-size: 14px; margin-bottom: 8px;">
+                                Categories (${filteredNews.length} articles)
+                            </div>
+                            <div class="category-container">
                                 ${this.categories.map(cat => `
                                     <button class="category-btn ${this.selectedCategory === cat.id ? 'active' : ''} ${cat.id === 'priority' ? 'priority' : ''}" 
                                             onclick="app.selectCategory('${cat.id}')">
@@ -283,45 +650,58 @@
                             </div>
                         </div>
                         
+                        ${this.isLoading ? `
+                            <div style="text-align: center; padding: 20px;">
+                                <div class="spinner" style="margin: 0 auto 10px;"></div>
+                                <div style="color: #10b981;">Loading fresh news...</div>
+                            </div>
+                        ` : ''}
+                        
                         <div>
                             ${displayedNews.map(article => `
-                                <div class="news-item importance-${article.importance}">
+                                <div class="news-item importance-${article.importance} ${article.isNew ? 'new-article' : ''}" 
+                                     onclick="window.open('${article.link}', '_blank')">
                                     <div class="news-meta">
-                                        <span class="news-source">${article.source}</span> • 
-                                        <span>🕐 ${article.timeAgo}</span> • 
-                                        <span style="color: ${article.importance === 'high' ? '#ef4444' : article.importance === 'medium' ? '#eab308' : '#6b7280'}; font-weight: 600;">
+                                        <span class="news-source">${article.source}</span>
+                                        <span>🕐 ${article.timeAgo}</span>
+                                        <span style="color: ${article.importance === 'high' ? '#ef4444' : article.importance === 'medium' ? '#eab308' : '#6b7280'}; font-weight: 600; font-size: 10px; padding: 2px 6px; border-radius: 3px; background: rgba(107, 114, 128, 0.1);">
                                             ${article.importance.toUpperCase()}
                                         </span>
+                                        ${article.isNew ? '<span style="color: #10b981; font-weight: 600; font-size: 10px;">🔥 NEW</span>' : ''}
                                     </div>
                                     <div class="news-title">${article.title}</div>
+                                    <div class="news-excerpt">${article.excerpt}</div>
                                 </div>
                             `).join('')}
                         </div>
                         
                         ${displayedNews.length < filteredNews.length ? `
                             <div style="text-align: center; margin: 20px 0;">
-                                <button onclick="app.loadMore()" style="background: #374151; color: white; border: none; padding: 12px 24px; border-radius: 6px; cursor: pointer;">
-                                    Load More Articles
+                                <button onclick="app.loadMore()" style="background: #374151; color: white; border: none; padding: 12px 24px; border-radius: 6px; cursor: pointer; transition: all 0.2s;">
+                                    Load More Articles (${filteredNews.length - displayedNews.length} remaining)
                                 </button>
                             </div>
                         ` : `
                             <div style="text-align: center; margin: 20px 0; color: #6b7280;">
-                                <div>All articles loaded</div>
+                                <div>📰 All articles loaded</div>
                                 <div style="font-size: 12px;">Showing ${filteredNews.length} articles</div>
+                                <div style="font-size: 12px; margin-top: 4px;">Next update in ${Math.ceil((5 * 60 * 1000 - (Date.now() - this.lastUpdate.getTime())) / 60000)} minutes</div>
                             </div>
                         `}
+                        
+                        <div style="height: 100px;"></div>
                     </div>
                 `;
             }
             
             selectCategory(categoryId) {
                 this.selectedCategory = categoryId;
-                this.displayedArticles = 10;
+                this.displayedArticles = 20;
                 this.render();
             }
             
             loadMore() {
-                this.displayedArticles += 10;
+                this.displayedArticles += 20;
                 this.render();
             }
             
@@ -335,11 +715,28 @@
                         }
                     }
                 });
+                
+                // Manual refresh on pull-down (mobile)
+                window.addEventListener('touchstart', (e) => {
+                    if (window.scrollY === 0) {
+                        this.startY = e.touches[0].clientY;
+                    }
+                });
+                
+                window.addEventListener('touchmove', (e) => {
+                    if (this.startY && e.touches[0].clientY > this.startY + 100 && window.scrollY === 0) {
+                        this.updateNews();
+                        this.startY = null;
+                    }
+                });
             }
         }
         
         // Initialize app
-        const app = new CryptoNewsApp();
+        const app = new LiveCryptoNewsApp();
+        
+        // Expose to global scope for button clicks
+        window.app = app;
     </script>
 </body>
 </html>
