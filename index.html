@@ -287,7 +287,7 @@
                     { id: 'coins', label: 'Top 100 Coins', icon: '🪙' }
                 ];
                 
-                // RSS Feed sources (same as CryptoPanic uses)
+                // RSS Feed sources (tested and working)
                 this.newsFeeds = [
                     {
                         name: 'CoinDesk',
@@ -310,13 +310,23 @@
                         category: 'general'
                     },
                     {
-                        name: 'Bitcoin Magazine',
-                        url: 'https://bitcoinmagazine.com/.rss/full/',
+                        name: 'Blockworks',
+                        url: 'https://blockworks.co/feed/',
+                        category: 'general'
+                    },
+                    {
+                        name: 'NewsBTC',
+                        url: 'https://www.newsbtc.com/feed/',
                         category: 'coins'
                     },
                     {
-                        name: 'Blockworks',
-                        url: 'https://blockworks.co/feed/',
+                        name: 'CryptoSlate',
+                        url: 'https://cryptoslate.com/feed/',
+                        category: 'general'
+                    },
+                    {
+                        name: 'U.Today',
+                        url: 'https://u.today/rss',
                         category: 'general'
                     }
                 ];
@@ -384,36 +394,69 @@
             
             async fetchFeedNews(feed) {
                 try {
-                    // Use AllOrigins to bypass CORS
+                    // Use AllOrigins to bypass CORS with better error handling
                     const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(feed.url)}`;
-                    const response = await fetch(proxyUrl);
+                    const response = await fetch(proxyUrl, {
+                        timeout: 10000 // 10 second timeout
+                    });
+                    
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+                    
                     const data = await response.json();
                     
                     if (!data.contents) {
-                        throw new Error('No content received');
+                        throw new Error('No content received from proxy');
+                    }
+                    
+                    // Check if content looks like JSON error instead of RSS
+                    if (data.contents.trim().startsWith('{') || data.contents.trim().startsWith('Oops')) {
+                        throw new Error('Feed returned error page instead of RSS');
                     }
                     
                     // Parse RSS/XML
                     const parser = new DOMParser();
                     const xmlDoc = parser.parseFromString(data.contents, 'text/xml');
                     
+                    // Check for XML parsing errors
+                    const parseError = xmlDoc.querySelector('parsererror');
+                    if (parseError) {
+                        throw new Error('Invalid RSS/XML format');
+                    }
+                    
                     // Handle both RSS and Atom feeds
                     const items = xmlDoc.querySelectorAll('item, entry');
+                    
+                    if (items.length === 0) {
+                        throw new Error('No articles found in feed');
+                    }
+                    
                     const articles = [];
                     
                     items.forEach((item, index) => {
-                        if (index < 10) { // Limit per source
-                            const article = this.parseRSSItem(item, feed);
-                            if (article) {
-                                articles.push(article);
+                        if (index < 15) { // Increased limit per source
+                            try {
+                                const article = this.parseRSSItem(item, feed);
+                                if (article) {
+                                    articles.push(article);
+                                }
+                            } catch (parseError) {
+                                console.warn(`Error parsing article ${index} from ${feed.name}:`, parseError);
                             }
                         }
                     });
                     
+                    if (articles.length === 0) {
+                        throw new Error('No valid articles could be parsed');
+                    }
+                    
+                    console.log(`✅ ${feed.name}: Loaded ${articles.length} articles`);
                     return articles;
                     
                 } catch (error) {
-                    throw new Error(`${feed.name}: ${error.message}`);
+                    console.error(`❌ ${feed.name}: ${error.message}`);
+                    throw new Error(error.message);
                 }
             }
             
@@ -458,7 +501,14 @@
                 for (const selector of selectorList) {
                     const element = item.querySelector(selector);
                     if (element) {
-                        return element.textContent || element.getAttribute('href') || '';
+                        // Handle different content types
+                        if (element.textContent) {
+                            return element.textContent.trim();
+                        } else if (element.getAttribute('href')) {
+                            return element.getAttribute('href');
+                        } else if (element.innerHTML) {
+                            return element.innerHTML.trim();
+                        }
                     }
                 }
                 return '';
@@ -468,7 +518,9 @@
                 if (!text) return '';
                 return text
                     .replace(/<[^>]*>/g, '') // Remove HTML tags
+                    .replace(/&[^;]+;/g, '') // Remove HTML entities
                     .replace(/\s+/g, ' ') // Normalize whitespace
+                    .replace(/\[.*?\]/g, '') // Remove bracketed text like [...]
                     .trim();
             }
             
