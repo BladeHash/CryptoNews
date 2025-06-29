@@ -287,7 +287,7 @@
                     { id: 'coins', label: 'Top 100 Coins', icon: '🪙' }
                 ];
                 
-                // RSS Feed sources (tested and working)
+                // RSS Feed sources (tested and working with fallbacks)
                 this.newsFeeds = [
                     {
                         name: 'CoinDesk',
@@ -310,25 +310,32 @@
                         category: 'general'
                     },
                     {
-                        name: 'Blockworks',
-                        url: 'https://blockworks.co/feed/',
-                        category: 'general'
-                    },
-                    {
-                        name: 'NewsBTC',
-                        url: 'https://www.newsbtc.com/feed/',
+                        name: 'Bitcoin.com',
+                        url: 'https://news.bitcoin.com/feed/',
                         category: 'coins'
                     },
                     {
-                        name: 'CryptoSlate',
-                        url: 'https://cryptoslate.com/feed/',
+                        name: 'Crypto Briefing',
+                        url: 'https://cryptobriefing.com/feed/',
                         category: 'general'
                     },
                     {
-                        name: 'U.Today',
-                        url: 'https://u.today/rss',
+                        name: 'AMBCrypto',
+                        url: 'https://ambcrypto.com/feed/',
+                        category: 'general'
+                    },
+                    {
+                        name: 'BeInCrypto',
+                        url: 'https://beincrypto.com/feed/',
                         category: 'general'
                     }
+                ];
+                
+                // Backup proxy services
+                this.proxyServices = [
+                    'https://api.allorigins.win/get?url=',
+                    'https://corsproxy.io/?',
+                    'https://cors-anywhere.herokuapp.com/'
                 ];
                 
                 this.init();
@@ -393,95 +400,153 @@
             }
             
             async fetchFeedNews(feed) {
-                try {
-                    // Use AllOrigins to bypass CORS with better error handling
-                    const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(feed.url)}`;
-                    const response = await fetch(proxyUrl, {
-                        timeout: 10000 // 10 second timeout
-                    });
-                    
-                    if (!response.ok) {
-                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-                    }
-                    
-                    const data = await response.json();
-                    
-                    if (!data.contents) {
-                        throw new Error('No content received from proxy');
-                    }
-                    
-                    // Check if content looks like JSON error instead of RSS
-                    if (data.contents.trim().startsWith('{') || data.contents.trim().startsWith('Oops')) {
-                        throw new Error('Feed returned error page instead of RSS');
-                    }
-                    
-                    // Parse RSS/XML
-                    const parser = new DOMParser();
-                    const xmlDoc = parser.parseFromString(data.contents, 'text/xml');
-                    
-                    // Check for XML parsing errors
-                    const parseError = xmlDoc.querySelector('parsererror');
-                    if (parseError) {
-                        throw new Error('Invalid RSS/XML format');
-                    }
-                    
-                    // Handle both RSS and Atom feeds
-                    const items = xmlDoc.querySelectorAll('item, entry');
-                    
-                    if (items.length === 0) {
-                        throw new Error('No articles found in feed');
-                    }
-                    
-                    const articles = [];
-                    
-                    items.forEach((item, index) => {
-                        if (index < 15) { // Increased limit per source
-                            try {
-                                const article = this.parseRSSItem(item, feed);
-                                if (article) {
-                                    articles.push(article);
-                                }
-                            } catch (parseError) {
-                                console.warn(`Error parsing article ${index} from ${feed.name}:`, parseError);
-                            }
+                // Try multiple proxy services if one fails
+                for (let proxyIndex = 0; proxyIndex < this.proxyServices.length; proxyIndex++) {
+                    try {
+                        const proxy = this.proxyServices[proxyIndex];
+                        let proxyUrl;
+                        
+                        if (proxy.includes('allorigins')) {
+                            proxyUrl = `${proxy}${encodeURIComponent(feed.url)}`;
+                        } else {
+                            proxyUrl = `${proxy}${encodeURIComponent(feed.url)}`;
                         }
-                    });
-                    
-                    if (articles.length === 0) {
-                        throw new Error('No valid articles could be parsed');
+                        
+                        const controller = new AbortController();
+                        const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
+                        
+                        const response = await fetch(proxyUrl, {
+                            signal: controller.signal,
+                            headers: {
+                                'Accept': 'application/json, text/plain, */*',
+                                'User-Agent': 'CryptoNewsApp/1.0'
+                            }
+                        });
+                        
+                        clearTimeout(timeoutId);
+                        
+                        if (!response.ok) {
+                            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                        }
+                        
+                        let data;
+                        const contentType = response.headers.get('content-type');
+                        
+                        if (contentType && contentType.includes('application/json')) {
+                            data = await response.json();
+                            // AllOrigins format
+                            if (data.contents) {
+                                data = data.contents;
+                            } else {
+                                throw new Error('No contents in JSON response');
+                            }
+                        } else {
+                            // Direct RSS/XML
+                            data = await response.text();
+                        }
+                        
+                        if (!data || data.length < 100) {
+                            throw new Error('Response too short or empty');
+                        }
+                        
+                        // Check if content looks like an error page
+                        if (data.includes('Oops') || data.includes('Error') || data.includes('404') || data.includes('403')) {
+                            throw new Error('Feed returned error page');
+                        }
+                        
+                        // Parse RSS/XML
+                        const parser = new DOMParser();
+                        const xmlDoc = parser.parseFromString(data, 'text/xml');
+                        
+                        // Check for XML parsing errors
+                        const parseError = xmlDoc.querySelector('parsererror');
+                        if (parseError) {
+                            throw new Error('Invalid RSS/XML format');
+                        }
+                        
+                        // Handle both RSS and Atom feeds
+                        const items = xmlDoc.querySelectorAll('item, entry');
+                        
+                        if (items.length === 0) {
+                            throw new Error('No articles found in feed');
+                        }
+                        
+                        const articles = [];
+                        
+                        items.forEach((item, index) => {
+                            if (index < 12) { // Limit per source
+                                try {
+                                    const article = this.parseRSSItem(item, feed);
+                                    if (article && article.title && article.link) {
+                                        articles.push(article);
+                                    }
+                                } catch (parseError) {
+                                    console.warn(`Error parsing article ${index} from ${feed.name}:`, parseError);
+                                }
+                            }
+                        });
+                        
+                        if (articles.length === 0) {
+                            throw new Error('No valid articles could be parsed');
+                        }
+                        
+                        console.log(`✅ ${feed.name} (proxy ${proxyIndex + 1}): Loaded ${articles.length} articles`);
+                        return articles;
+                        
+                    } catch (error) {
+                        console.warn(`❌ ${feed.name} (proxy ${proxyIndex + 1}): ${error.message}`);
+                        
+                        // If this is the last proxy, throw the error
+                        if (proxyIndex === this.proxyServices.length - 1) {
+                            throw new Error(error.message);
+                        }
+                        // Otherwise, try next proxy
+                        continue;
                     }
-                    
-                    console.log(`✅ ${feed.name}: Loaded ${articles.length} articles`);
-                    return articles;
-                    
-                } catch (error) {
-                    console.error(`❌ ${feed.name}: ${error.message}`);
-                    throw new Error(error.message);
                 }
             }
             
             parseRSSItem(item, feed) {
                 try {
                     const title = this.getTextContent(item, 'title');
-                    const link = this.getTextContent(item, 'link, guid');
-                    const description = this.getTextContent(item, 'description, summary, content');
-                    const pubDate = this.getTextContent(item, 'pubDate, published, updated');
+                    const link = this.getTextContent(item, 'link, guid') || this.getAttributeContent(item, 'link', 'href');
+                    const description = this.getTextContent(item, 'description, summary, content, content:encoded');
+                    const pubDate = this.getTextContent(item, 'pubDate, published, updated, dc:date');
                     
-                    if (!title || !link) return null;
+                    if (!title || title.length < 10) return null;
+                    if (!link || !link.startsWith('http')) return null;
                     
                     // Calculate time ago
-                    const publishDate = new Date(pubDate || Date.now());
+                    let publishDate;
+                    try {
+                        publishDate = pubDate ? new Date(pubDate) : new Date();
+                        // If date is invalid or in the future, use current time
+                        if (isNaN(publishDate.getTime()) || publishDate > new Date()) {
+                            publishDate = new Date();
+                        }
+                    } catch (e) {
+                        publishDate = new Date();
+                    }
+                    
                     const timeAgo = this.getTimeAgo(publishDate);
                     
                     // Auto-categorize based on keywords
                     const category = this.categorizeArticle(title, description);
                     const importance = this.calculateImportance(title, description);
                     
+                    // Create excerpt
+                    let excerpt = this.cleanText(description);
+                    if (excerpt.length > 200) {
+                        excerpt = excerpt.substring(0, 200) + '...';
+                    } else if (excerpt.length < 50) {
+                        excerpt = 'Click to read the full article on ' + feed.name;
+                    }
+                    
                     return {
                         id: this.generateId(title + link),
                         title: this.cleanText(title),
                         link: link,
-                        excerpt: this.cleanText(description).substring(0, 200) + '...',
+                        excerpt: excerpt,
                         source: feed.name,
                         publishDate: publishDate,
                         timeAgo: timeAgo,
@@ -494,6 +559,11 @@
                     console.warn('Error parsing RSS item:', error);
                     return null;
                 }
+            }
+            
+            getAttributeContent(item, selector, attribute) {
+                const element = item.querySelector(selector);
+                return element ? element.getAttribute(attribute) || '' : '';
             }
             
             getTextContent(item, selectors) {
