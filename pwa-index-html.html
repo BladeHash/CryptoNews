@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Crypto News - Live Updates</title>
+    
+    <!-- PWA Meta Tags -->
+    <meta name="description" content="Latest cryptocurrency news and market updates">
+    <meta name="theme-color" content="#000000">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="CryptoNews">
+    
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="/manifest.json">
+    
+    <!-- Apple Touch Icons -->
+    <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Crect width='192' height='192' fill='%23000000'/%3E%3Ctext x='96' y='120' font-family='Arial,sans-serif' font-size='80' fill='%2300ff88' text-anchor='middle'%3E₿%3C/text%3E%3C/svg%3E">
+    
+    <!-- Favicon -->
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23000000'/%3E%3Ctext x='16' y='24' font-family='Arial,sans-serif' font-size='20' fill='%2300ff88' text-anchor='middle'%3E₿%3C/text%3E%3C/svg%3E">
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- React & React DOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    
+    <!-- Lucide React Icons -->
+    <script src="https://unpkg.com/lucide-react@latest/dist/umd/lucide-react.js"></script>
+    
+    <!-- Babel for JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <style>
+        input[type="color"], input[type="date"], input[type="datetime"], input[type="datetime-local"], input[type="email"], input[type="month"], input[type="number"], input[type="password"], input[type="search"], input[type="tel"], input[type="text"], input[type="time"], input[type="url"], input[type="week"], select:focus, textarea {
+            font-size: 16px;
+        }
+        
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+            background-color: #000000;
+            overflow-x: hidden;
+        }
+        
+        ::-webkit-scrollbar {
+            display: none;
+        }
+        
+        @supports (padding: max(0px)) {
+            .safe-area-top {
+                padding-top: max(1rem, env(safe-area-inset-top));
+            }
+            .safe-area-bottom {
+                padding-bottom: max(1rem, env(safe-area-inset-bottom));
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+        const { ArrowLeft, Newspaper, Clock, ExternalLink, Filter, TrendingUp, Building, Globe, Coins, Home, Briefcase, Eye, Bell, AlertTriangle, Download } = lucideReact;
+
+        const CryptoNews = () => {
+            const [selectedCategory, setSelectedCategory] = useState('all');
+            const [displayedArticles, setDisplayedArticles] = useState(10);
+            const [isLoading, setIsLoading] = useState(false);
+            const [deferredPrompt, setDeferredPrompt] = useState(null);
+            const [showInstallButton, setShowInstallButton] = useState(false);
+
+            const newsSources = ['CoinDesk', 'CoinTelegraph', 'Decrypt', 'The Block', 'Bitcoin Magazine', 'CoinGecko News', 'Blockworks', 'Crypto Briefing', 'AMBCrypto', 'BeInCrypto', 'U.Today', 'NewsBTC', 'CryptoSlate', 'Bitcoin.com News', 'Cryptonews.com'];
+
+            const categories = [
+                { id: 'all', label: 'All News', icon: Newspaper },
+                { id: 'priority', label: 'Priority', icon: AlertTriangle },
+                { id: 'government', label: 'Government', icon: Building },
+                { id: 'institutions', label: 'Institutions', icon: TrendingUp },
+                { id: 'coins', label: 'Top 100 Coins', icon: Coins }
+            ];
+
+            const generateMoreNews = (startId) => {
+                const additionalNews = [];
+                const traditionalInstitutions = ['JPMorgan Chase', 'Goldman Sachs', 'Morgan Stanley', 'Bank of America', 'Wells Fargo', 'Deutsche Bank', 'UBS', 'Credit Suisse', 'HSBC', 'Barclays', 'Santander', 'BNP Paribas', 'ING Group', 'Societe Generale', 'UniCredit', 'Coinbase', 'Kraken', 'Gemini', 'Bitstamp'];
+                
+                const institutionalActions = ['launches Bitcoin custody services for', 'announces crypto trading desk for', 'partners with blockchain company to offer', 'invests $500M in digital asset fund', 'receives regulatory approval for crypto', 'expands wealth management crypto services to', 'integrates Bitcoin payments for', 'launches institutional crypto lending for', 'announces digital asset ETF with', 'receives central bank approval for crypto'];
+                
+                const realExcerpts = ['Major traditional bank announces expansion into cryptocurrency services as institutional demand continues to grow...', 'Wealth management giant reveals plans to offer Bitcoin custody solutions to high-net-worth clients...', 'European banking institution receives regulatory approval to provide digital asset trading services...', 'Investment bank establishes dedicated cryptocurrency trading desk to serve institutional investors...', 'Global financial services company partners with crypto infrastructure provider to expand offerings...', 'Traditional bank announces significant investment in blockchain technology and digital asset capabilities...', 'Major exchange receives regulatory licenses to operate in additional European markets...', 'Banking conglomerate launches pilot program for central bank digital currency integration...', 'Financial institution announces acquisition of crypto custody technology company...', 'Multinational bank establishes digital asset research division to serve institutional clients...'];
+                
+                for (let i = 0; i < 10; i++) {
+                    const id = startId + i;
+                    const institution = traditionalInstitutions[i % traditionalInstitutions.length];
+                    const action = institutionalActions[i % institutionalActions.length];
+                    const category = i % 4 === 0 ? 'institutions' : ['government', 'coins', 'coins'][i % 3];
+                    
+                    additionalNews.push({
+                        id: id,
+                        title: category === 'institutions' ? `${institution} ${action} institutional clients` : `Crypto News Article ${id}`,
+                        source: newsSources[i % newsSources.length],
+                        category: category,
+                        timestamp: new Date(Date.now() - (id * 1000 * 60 * 30)).toISOString(),
+                        timeAgo: `${Math.floor(id * 0.5)}h ago`,
+                        excerpt: category === 'institutions' ? realExcerpts[i % realExcerpts.length] : 'Cryptocurrency market update with latest developments in blockchain technology and digital assets...',
+                        url: `https://example.com/news/${id}`,
+                        importance: ['high', 'medium', 'low'][i % 3],
+                        tags: category === 'institutions' ? [institution.split(' ')[0], 'Banking', 'Institutional', 'TradFi', 'Custody'] : ['Bitcoin', 'Ethereum', 'DeFi', 'Trading', 'Blockchain']
+                    });
+                }
+                return additionalNews;
+            };
+
+            const allNews = [
+                { id: 1, title: 'SEC Approves Spot Bitcoin ETF Applications from BlackRock and Fidelity', source: 'CoinDesk', category: 'institutions', timestamp: '2024-12-21T15:30:00Z', timeAgo: '2h ago', excerpt: 'The Securities and Exchange Commission has granted approval for spot Bitcoin ETF applications from major asset managers...', url: 'https://coindesk.com/policy/2024/12/21/sec-approves-spot-bitcoin-etf/', importance: 'high', tags: ['Bitcoin', 'ETF', 'SEC', 'BlackRock', 'Fidelity'] },
+                { id: 2, title: 'European Union Finalizes MiCA Regulation Implementation Timeline', source: 'The Block', category: 'government', timestamp: '2024-12-21T14:15:00Z', timeAgo: '3h ago', excerpt: 'The European Union has set clear dates for the Markets in Crypto-Assets regulation rollout across member states...', url: 'https://theblock.co/post/269847/eu-mica-regulation-timeline', importance: 'high', tags: ['MiCA', 'EU', 'Regulation', 'Europe'] },
+                { id: 3, title: 'Ethereum Shanghai Upgrade Successfully Activates, Enables Staking Withdrawals', source: 'Decrypt', category: 'coins', timestamp: '2024-12-21T13:45:00Z', timeAgo: '4h ago', excerpt: 'The Ethereum network has successfully activated the Shanghai upgrade, allowing validators to withdraw staked ETH...', url: 'https://decrypt.co/ethereum-shanghai-upgrade-staking-withdrawals', importance: 'high', tags: ['Ethereum', 'Shanghai', 'Staking', 'Upgrade'] },
+                { id: 4, title: 'JPMorgan Chase Launches Digital Asset Trading Desk for Institutional Clients', source: 'Bitcoin Magazine', category: 'institutions', timestamp: '2024-12-21T12:20:00Z', timeAgo: '5h ago', excerpt: 'Americas largest bank by assets has officially launched crypto trading services for institutional clients...', url: 'https://bitcoinmagazine.com/jpmorgan-crypto-trading-desk', importance: 'high', tags: ['JPMorgan', 'Banking', 'Trading', 'Institutional'] },
+                { id: 5, title: 'US House Passes Stablecoin Regulation Bill with Bipartisan Support', source: 'CoinTelegraph', category: 'government', timestamp: '2024-12-21T11:00:00Z', timeAgo: '6h ago', excerpt: 'The US House of Representatives has passed comprehensive stablecoin legislation with strong bipartisan backing...', url: 'https://cointelegraph.com/news/us-house-stablecoin-bill-passes', importance: 'high', tags: ['Stablecoin', 'US Congress', 'Regulation', 'Bipartisan'] },
+                { id: 6, title: 'Solana Network Experiences Brief Outage, Recovers Within 4 Hours', source: 'Blockworks', category: 'coins', timestamp: '2024-12-21T10:30:00Z', timeAgo: '7h ago', excerpt: 'The Solana blockchain experienced a temporary network halt but validators quickly coordinated a restart...', url: 'https://blockworks.co/news/solana-network-outage-recovery', importance: 'medium', tags: ['Solana', 'Network', 'Outage', 'Validators'] },
+                { id: 7, title: 'Japan Central Bank Announces Digital Yen Pilot Program Timeline', source: 'Crypto Briefing', category: 'government', timestamp: '2024-12-21T09:15:00Z', timeAgo: '8h ago', excerpt: 'The Bank of Japan has revealed detailed plans for testing its central bank digital currency in 2024...', url: 'https://cryptobriefing.com/japan-cbdc-digital-yen-pilot', importance: 'medium', tags: ['Japan', 'CBDC', 'Digital Yen', 'Central Bank'] },
+                { id: 8, title: 'Goldman Sachs Expands Bitcoin Custody Services to Retail Clients', source: 'CoinDesk', category: 'institutions', timestamp: '2024-12-21T08:45:00Z', timeAgo: '9h ago', excerpt: 'Goldman Sachs has announced expansion of its digital asset custody services to high-net-worth individual clients...', url: 'https://coindesk.com/policy/goldman-sachs-bitcoin-custody-retail', importance: 'high', tags: ['Goldman Sachs', 'Custody', 'Bitcoin', 'Wealth Management'] },
+                { id: 9, title: 'Cardano Launches Smart Contract Capabilities with Alonzo Upgrade', source: 'AMBCrypto', category: 'coins', timestamp: '2024-12-21T07:20:00Z', timeAgo: '10h ago', excerpt: 'Cardano has successfully implemented smart contract functionality through the Alonzo hard fork...', url: 'https://ambcrypto.com/cardano-alonzo-smart-contracts-launch', importance: 'medium', tags: ['Cardano', 'Smart Contracts', 'Alonzo', 'DeFi'] },
+                { id: 10, title: 'El Salvador Adds 100 More Bitcoin to National Treasury', source: 'Bitcoin.com News', category: 'government', timestamp: '2024-12-21T06:00:00Z', timeAgo: '11h ago', excerpt: 'President Bukele announces another Bitcoin purchase as El Salvador continues building its BTC reserves...', url: 'https://news.bitcoin.com/el-salvador-buys-100-bitcoin-treasury', importance: 'medium', tags: ['El Salvador', 'Bitcoin', 'Government', 'Treasury'] }
+            ];
+
+            const [allArticles, setAllArticles] = useState(() => {
+                const initial = [...allNews];
+                for (let batch = 1; batch <= 5; batch++) {
+                    initial.push(...generateMoreNews(batch * 10 + 10));
+                }
+                return initial;
+            });
+
+            const filteredNews = (() => {
+                if (selectedCategory === 'all') {
+                    return allArticles;
+                } else if (selectedCategory === 'priority') {
+                    return allArticles.filter(article => article.importance === 'high' || article.importance === 'medium').sort((a, b) => {
+                        const priorityOrder = { 'high': 0, 'medium': 1, 'low': 2 };
+                        const priorityDiff = priorityOrder[a.importance] - priorityOrder[b.importance];
+                        if (priorityDiff !== 0) return priorityDiff;
+                        return new Date(b.timestamp) - new Date(a.timestamp);
+                    });
+                } else {
+                    return allArticles.filter(article => article.category === selectedCategory);
+                }
+            })();
+
+            const displayedNews = filteredNews.slice(0, displayedArticles);
+
+            useEffect(() => {
+                const handleScroll = () => {
+                    if (window.innerHeight + document.documentElement.scrollTop >= document.documentElement.offsetHeight - 1000) {
+                        if (!isLoading && displayedArticles < filteredNews.length) {
+                            setIsLoading(true);
+                            setTimeout(() => {
+                                setDisplayedArticles(prev => Math.min(prev + 10, filteredNews.length));
+                                setIsLoading(false);
+                            }, 500);
+                        }
+                    }
+                };
+                window.addEventListener('scroll', handleScroll);
+                return () => window.removeEventListener('scroll', handleScroll);
+            }, [displayedArticles, filteredNews.length, isLoading]);
+
+            useEffect(() => {
+                setDisplayedArticles(10);
+            }, [selectedCategory]);
+
+            useEffect(() => {
+                const handleBeforeInstallPrompt = (e) => {
+                    e.preventDefault();
+                    setDeferredPrompt(e);
+                    setShowInstallButton(true);
+                };
+
+                const handleAppInstalled = () => {
+                    setShowInstallButton(false);
+                    setDeferredPrompt(null);
+                };
+
+                window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+                window.addEventListener('appinstalled', handleAppInstalled);
+
+                if (window.matchMedia('(display-mode: standalone)').matches) {
+                    setShowInstallButton(false);
+                }
+
+                return () => {
+                    window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+                    window.removeEventListener('appinstalled', handleAppInstalled);
+                };
+            }, []);
+
+            const handleInstallClick = async () => {
+                if (deferredPrompt) {
+                    deferredPrompt.prompt();
+                    const { outcome } = await deferredPrompt.userChoice;
+                    if (outcome === 'accepted') {
+                        setShowInstallButton(false);
+                    }
+                    setDeferredPrompt(null);
+                }
+            };
+
+            const getImportanceColor = (importance) => {
+                switch (importance) {
+                    case 'high': return 'border-l-red-500 bg-red-500/5';
+                    case 'medium': return 'border-l-yellow-500 bg-yellow-500/5';
+                    default: return 'border-l-gray-500 bg-gray-500/5';
+                }
+            };
+
+            const getCategoryIcon = (category) => {
+                switch (category) {
+                    case 'government': return Building;
+                    case 'institutions': return TrendingUp;
+                    case 'coins': return Coins;
+                    case 'priority': return AlertTriangle;
+                    default: return Newspaper;
+                }
+            };
+
+            return (
+                <div className="min-h-screen bg-black text-white p-4 pb-24 safe-area-top safe-area-bottom">
+                    <div className="flex items-center mb-6">
+                        <button onClick={() => { console.log('Navigating back to dashboard...'); window.location.reload(); }} className="p-2 rounded-lg bg-gray-800 mr-4 hover:bg-gray-700 transition-colors">
+                            <ArrowLeft className="w-5 h-5" />
+                        </button>
+                        <div className="flex-1">
+                            <h1 className="text-2xl font-bold bg-gradient-to-r from-green-400 to-purple-400 bg-clip-text text-transparent">Crypto News</h1>
+                            <p className="text-gray-400 text-sm">Latest cryptocurrency news and updates</p>
+                        </div>
+                        <div className="text-right">
+                            <div className="text-sm text-gray-400">Live Updates</div>
+                            <div className="text-green-400 font-mono text-xs">Updated 5min ago</div>
+                        </div>
+                        {showInstallButton && (
+                            <button onClick={handleInstallClick} className="ml-4 p-2 rounded-lg bg-green-500 text-black hover:bg-green-400 transition-colors flex items-center">
+                                <Download className="w-4 h-4 mr-1" />
+                                <span className="text-sm font-medium">Install App</span>
+                            </button>
+                        )}
+                    </div>
+
+                    <div className="mb-6">
+                        <div className="mb-4">
+                            <h3 className="text-sm font-medium mb-2 text-gray-400">Categories</h3>
+                            <div className="flex gap-2 overflow-x-auto">
+                                {categories.map((category) => (
+                                    <button key={category.id} onClick={() => setSelectedCategory(category.id)} className={`flex items-center px-3 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${selectedCategory === category.id ? category.id === 'priority' ? 'bg-red-500 text-white' : 'bg-green-500 text-black' : 'bg-gray-800 text-gray-400 hover:text-white'}`}>
+                                        <category.icon className="w-4 h-4 mr-2" />
+                                        {category.label}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="space-y-3">
+                        {displayedNews.map((article) => {
+                            const CategoryIcon = getCategoryIcon(article.category);
+                            return (
+                                <div key={article.id} className={`border-l-4 rounded-r-xl p-3 bg-gray-900 border border-gray-800 hover:bg-gray-850 transition-colors ${getImportanceColor(article.importance)}`}>
+                                    <div className="flex items-start justify-between">
+                                        <div className="flex items-start flex-1">
+                                            <CategoryIcon className="w-4 h-4 text-gray-400 mr-2 mt-0.5" />
+                                            <div className="flex-1">
+                                                <div className="flex items-center text-sm mb-1">
+                                                    <span className="font-medium text-blue-400">{article.source}</span>
+                                                    <span className="mx-2 text-gray-500">•</span>
+                                                    <div className="flex items-center text-xs text-gray-400">
+                                                        <Clock className="w-3 h-3 mr-1" />
+                                                        {article.timeAgo}
+                                                    </div>
+                                                    <div className={`ml-3 px-2 py-0.5 rounded text-xs font-medium ${article.importance === 'high' ? 'bg-red-500/20 text-red-400' : article.importance === 'medium' ? 'bg-yellow-500/20 text-yellow-400' : 'bg-gray-500/20 text-gray-400'}`}>
+                                                        {article.importance}
+                                                    </div>
+                                                </div>
+                                                <h2 className="text-base font-semibold text-white leading-tight">{article.title}</h2>
+                                            </div>
+                                        </div>
+                                        <button onClick={() => window.open(article.url, '_blank')} className="text-gray-400 hover:text-white transition-colors ml-2">
+                                            <ExternalLink className="w-4 h-4" />
+                                        </button>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+
+                    {isLoading && (
+                        <div className="mt-8 text-center">
+                            <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-green-400"></div>
+                            <p className="text-gray-400 mt-2">Loading more articles...</p>
+                        </div>
+                    )}
+
+                    {displayedArticles >= filteredNews.length && filteredNews.length > 0 && (
+                        <div className="mt-8 text-center text-gray-500">
+                            <p>No more articles to load</p>
+                            <p className="text-sm">Showing {filteredNews.length} articles</p>
+                        </div>
+                    )}
+
+                    <div className="fixed bottom-0 left-0 right-0 bg-gray-900 border-t border-gray-800 px-4 py-2">
+                        <div className="flex justify-around items-center max-w-md mx-auto">
+                            <button onClick={() => window.location.reload()} className="flex flex-col items-center p-2 text-gray-400 hover:text-white transition-colors">
+                                <Home className="w-6 h-6" />
+                                <span className="text-xs mt-1">Dashboard</span>
+                            </button>
+                            <button className="flex flex-col items-center p-2 text-green-400">
+                                <Newspaper className="w-6 h-6" />
+                                <span className="text-xs mt-1">News</span>
+                            </button>
+                            <button className="flex flex-col items-center p-2 text-gray-400 hover:text-white transition-colors">
+                                <Briefcase className="w-6 h-6" />
+                                <span className="text-xs mt-1">Portfolio</span>
+                            </button>
+                            <button className="flex flex-col items-center p-2 text-gray-400 hover:text-white transition-colors">
+                                <Eye className="w-6 h-6" />
+                                <span className="text-xs mt-1">Watchlist</span>
+                            </button>
+                            <button className="flex flex-col items-center p-2 text-gray-400 hover:text-white transition-colors">
+                                <Bell className="w-6 h-6" />
+                                <span className="text-xs mt-1">Alerts</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js')
+                    .then((registration) => { console.log('SW registered: ', registration); })
+                    .catch((registrationError) => { console.log('SW registration failed: ', registrationError); });
+            });
+        }
+
+        ReactDOM.render(<CryptoNews />, document.getElementById('root'));
+    </script>
+</body>
+</html>
