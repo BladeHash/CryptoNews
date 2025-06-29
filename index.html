@@ -815,9 +815,8 @@
                     <div style="padding: 0 20px;">
                         ${this.errors.length > 0 ? `
                             <div class="error-message">
-                                <div>⚠️ Some news sources failed to load:</div>
-                                ${this.errors.slice(0, 3).map(error => `<div style="margin-top: 4px;">• ${error}</div>`).join('')}
-                                <button class="retry-btn" onclick="app.updateNews()">Retry</button>
+                                <div>⚠️ Some news sources temporarily unavailable (${this.errors.length}/${this.newsFeeds.length} failed)</div>
+                                <button class="retry-btn" onclick="app.updateNews()">Refresh Sources</button>
                             </div>
                         ` : ''}
                         
