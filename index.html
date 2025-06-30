@@ -271,11 +271,283 @@
             async loadNews() {
                 console.log('Loading news...');
                 
-                // Use comprehensive, realistic, current crypto news
+                // Try to load real RSS feeds first
+                try {
+                    const allArticles = [];
+                    let successCount = 0;
+                    
+                    // RSS Feed sources (same as working desktop version)
+                    const newsFeeds = [
+                        { name: 'CoinDesk', url: 'https://www.coindesk.com/arc/outboundfeeds/rss/', category: 'general' },
+                        { name: 'CoinTelegraph', url: 'https://cointelegraph.com/rss', category: 'general' },
+                        { name: 'The Block', url: 'https://www.theblock.co/rss.xml', category: 'general' },
+                        { name: 'Bitcoin.com', url: 'https://news.bitcoin.com/feed/', category: 'coins' },
+                        { name: 'Crypto Briefing', url: 'https://cryptobriefing.com/feed/', category: 'general' },
+                        { name: 'BeInCrypto', url: 'https://beincrypto.com/feed/', category: 'general' },
+                        { name: 'Coinpedia', url: 'https://coinpedia.org/feed/', category: 'general' },
+                        { name: 'CryptoPotato', url: 'https://cryptopotato.com/feed/', category: 'general' }
+                    ];
+                    
+                    // Try to fetch RSS feeds
+                    const fetchPromises = newsFeeds.map(feed => this.fetchFeedNews(feed));
+                    const results = await Promise.allSettled(fetchPromises);
+                    
+                    results.forEach((result, index) => {
+                        if (result.status === 'fulfilled') {
+                            allArticles.push(...result.value);
+                            successCount++;
+                        } else {
+                            console.log(`❌ ${newsFeeds[index].name}: ${result.reason}`);
+                        }
+                    });
+                    
+                    console.log(`✅ Successfully loaded from ${successCount}/${newsFeeds.length} sources`);
+                    
+                    if (allArticles.length > 10) {
+                        // Use real RSS articles if we got enough
+                        this.allNews = this.removeDuplicates(allArticles)
+                            .sort((a, b) => new Date(b.publishDate) - new Date(a.publishDate))
+                            .slice(0, 100);
+                        
+                        console.log(`✅ Using ${this.allNews.length} real RSS articles`);
+                        this.lastUpdate = new Date();
+                        return;
+                    }
+                } catch (error) {
+                    console.log('RSS loading failed:', error);
+                }
+                
+                // Fallback to generated content only if RSS completely fails
+                console.log('Using fallback content due to RSS failure');
                 this.allNews = this.generateCurrentCryptoNews();
                 this.lastUpdate = new Date();
+            }
+            
+            async fetchFeedNews(feed) {
+                const proxyServices = [
+                    'https://api.allorigins.win/get?url=',
+                    'https://corsproxy.io/?'
+                ];
                 
-                console.log(`✅ Loaded ${this.allNews.length} articles`);
+                for (let proxyIndex = 0; proxyIndex < proxyServices.length; proxyIndex++) {
+                    try {
+                        const proxy = proxyServices[proxyIndex];
+                        const proxyUrl = `${proxy}${encodeURIComponent(feed.url)}`;
+                        
+                        const controller = new AbortController();
+                        const timeoutId = setTimeout(() => controller.abort(), 15000);
+                        
+                        const response = await fetch(proxyUrl, {
+                            signal: controller.signal,
+                            headers: {
+                                'Accept': 'application/json, text/plain, */*',
+                                'User-Agent': 'Mozilla/5.0 (compatible; CryptoNewsApp/1.0)'
+                            }
+                        });
+                        
+                        clearTimeout(timeoutId);
+                        
+                        if (!response.ok) {
+                            throw new Error(`HTTP ${response.status}`);
+                        }
+                        
+                        let data;
+                        const contentType = response.headers.get('content-type');
+                        
+                        if (contentType && contentType.includes('application/json')) {
+                            data = await response.json();
+                            if (data.contents) {
+                                data = data.contents;
+                            } else {
+                                throw new Error('No contents in JSON response');
+                            }
+                        } else {
+                            data = await response.text();
+                        }
+                        
+                        if (!data || data.length < 100) {
+                            throw new Error('Response too short');
+                        }
+                        
+                        // Parse RSS/XML
+                        const parser = new DOMParser();
+                        const xmlDoc = parser.parseFromString(data, 'text/xml');
+                        
+                        const parseError = xmlDoc.querySelector('parsererror');
+                        if (parseError) {
+                            throw new Error('Invalid RSS/XML');
+                        }
+                        
+                        const items = xmlDoc.querySelectorAll('item, entry');
+                        
+                        if (items.length === 0) {
+                            throw new Error('No articles found');
+                        }
+                        
+                        const articles = [];
+                        
+                        items.forEach((item, index) => {
+                            if (index < 12) {
+                                try {
+                                    const article = this.parseRSSItem(item, feed);
+                                    if (article && article.title && article.link) {
+                                        articles.push(article);
+                                    }
+                                } catch (parseError) {
+                                    // Skip bad articles silently
+                                }
+                            }
+                        });
+                        
+                        if (articles.length === 0) {
+                            throw new Error('No valid articles parsed');
+                        }
+                        
+                        console.log(`✅ ${feed.name}: ${articles.length} articles`);
+                        return articles;
+                        
+                    } catch (error) {
+                        if (proxyIndex === proxyServices.length - 1) {
+                            throw new Error(error.message);
+                        }
+                        continue;
+                    }
+                }
+            }
+            
+            parseRSSItem(item, feed) {
+                try {
+                    const title = this.getTextContent(item, 'title');
+                    const link = this.getTextContent(item, 'link, guid') || this.getAttributeContent(item, 'link', 'href');
+                    const description = this.getTextContent(item, 'description, summary, content, content:encoded');
+                    const pubDate = this.getTextContent(item, 'pubDate, published, updated, dc:date');
+                    
+                    if (!title || title.length < 10) return null;
+                    if (!link || !link.startsWith('http')) return null;
+                    
+                    let publishDate;
+                    try {
+                        publishDate = pubDate ? new Date(pubDate) : new Date();
+                        if (isNaN(publishDate.getTime()) || publishDate > new Date()) {
+                            publishDate = new Date();
+                        }
+                    } catch (e) {
+                        publishDate = new Date();
+                    }
+                    
+                    const timeAgo = this.getTimeAgo(publishDate);
+                    const category = this.categorizeArticle(title, description);
+                    const importance = this.calculateImportance(title, description);
+                    
+                    let excerpt = this.cleanText(description);
+                    if (excerpt.length > 200) {
+                        excerpt = excerpt.substring(0, 200) + '...';
+                    } else if (excerpt.length < 50) {
+                        excerpt = 'Click to read the full article on ' + feed.name;
+                    }
+                    
+                    return {
+                        id: this.generateId(title + link),
+                        title: this.cleanText(title),
+                        link: link,
+                        excerpt: excerpt,
+                        source: feed.name,
+                        publishDate: publishDate,
+                        timeAgo: timeAgo,
+                        category: category,
+                        importance: importance,
+                        isNew: (Date.now() - publishDate.getTime()) < 3600000
+                    };
+                    
+                } catch (error) {
+                    return null;
+                }
+            }
+            
+            getTextContent(item, selectors) {
+                const selectorList = selectors.split(', ');
+                for (const selector of selectorList) {
+                    const element = item.querySelector(selector);
+                    if (element) {
+                        if (element.textContent) {
+                            return element.textContent.trim();
+                        } else if (element.getAttribute('href')) {
+                            return element.getAttribute('href');
+                        } else if (element.innerHTML) {
+                            return element.innerHTML.trim();
+                        }
+                    }
+                }
+                return '';
+            }
+            
+            getAttributeContent(item, selector, attribute) {
+                const element = item.querySelector(selector);
+                return element ? element.getAttribute(attribute) || '' : '';
+            }
+            
+            cleanText(text) {
+                if (!text) return '';
+                return text
+                    .replace(/<[^>]*>/g, '')
+                    .replace(/&[^;]+;/g, '')
+                    .replace(/\s+/g, ' ')
+                    .replace(/\[.*?\]/g, '')
+                    .trim();
+            }
+            
+            categorizeArticle(title, description) {
+                const text = (title + ' ' + description).toLowerCase();
+                
+                if (text.match(/\b(sec|regulation|government|congress|bill|law|legal|court|fed|federal reserve|treasury|biden|trump|policy)\b/)) {
+                    return 'government';
+                }
+                
+                if (text.match(/\b(jpmorgan|goldman|bank|institutional|wall street|fidelity|blackrock|grayscale|coinbase|kraken|binance|etf|fund)\b/)) {
+                    return 'institutions';
+                }
+                
+                if (text.match(/\b(bitcoin|ethereum|btc|eth|altcoin|defi|nft|mining|staking|upgrade|fork)\b/)) {
+                    return 'coins';
+                }
+                
+                return 'coins';
+            }
+            
+            calculateImportance(title, description) {
+                const text = (title + ' ' + description).toLowerCase();
+                
+                if (text.match(/\b(breaking|urgent|major|significant|approved|banned|launch|hack|crash|surge|all-time high|ath|regulation|sec)\b/)) {
+                    return 'high';
+                }
+                
+                if (text.match(/\b(announces|partnership|upgrade|update|investment|funding|acquisition|expands)\b/)) {
+                    return 'medium';
+                }
+                
+                return 'low';
+            }
+            
+            generateId(str) {
+                let hash = 0;
+                for (let i = 0; i < str.length; i++) {
+                    const char = str.charCodeAt(i);
+                    hash = ((hash << 5) - hash) + char;
+                    hash = hash & hash;
+                }
+                return Math.abs(hash);
+            }
+            
+            removeDuplicates(articles) {
+                const seen = new Set();
+                return articles.filter(article => {
+                    const key = article.title.toLowerCase().substring(0, 50);
+                    if (seen.has(key)) {
+                        return false;
+                    }
+                    seen.add(key);
+                    return true;
+                });
             }
             
             generateCurrentCryptoNews() {
