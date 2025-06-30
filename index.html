@@ -1,30 +1,4 @@
-<script>
-        // Force clear all caches and service workers - run immediately
-        if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.getRegistrations().then(function(registrations) {
-                for(let registration of registrations) {
-                    registration.unregister();
-                    console.log('Service Worker unregistered');
-                }
-            });
-        }
-        
-        // Clear all caches
-        if ('caches' in window) {
-            caches.keys().then(function(names) {
-                for (let name of names) {
-                    caches.delete(name);
-                    console.log('Cache deleted:', name);
-                }
-            });
-        }
-        
-        // Force reload after clearing caches
-        setTimeout(() => {
-            console.log('Force reloading page...');
-            window.location.reload(true);
-        }, 2000);
-    </script><!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -32,7 +6,7 @@
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
-    <title>Crypto News - Live Updates v2.1</title>
+    <title>Crypto News - Live Updates</title>
     
     <!-- PWA Meta Tags -->
     <meta name="description" content="Latest cryptocurrency news and market updates">
@@ -458,17 +432,16 @@
                     
                     console.log(`✅ Successfully loaded from ${successCount}/${this.newsFeeds.length} sources`);
                     
-                    // ALWAYS add comprehensive fallback content if we have less than 50 articles
-                    if (allArticles.length < 50) {
-                        console.log('Adding comprehensive fallback content');
-                        const fallbackArticles = this.generateComprehensiveFallbackNews();
-                        allArticles.push(...fallbackArticles);
+                    // Only use fallback if we have NO real articles at all
+                    if (allArticles.length === 0) {
+                        console.log('No real articles loaded - using fallback content');
+                        allArticles.push(...this.generateComprehensiveFallbackNews());
                     }
                     
                     // Sort by date (newest first) and remove duplicates
                     this.allNews = this.removeDuplicates(allArticles)
                         .sort((a, b) => new Date(b.publishDate) - new Date(a.publishDate))
-                        .slice(0, 120); // Increased limit
+                        .slice(0, 100);
                     
                     this.lastUpdate = new Date();
                     
@@ -476,8 +449,10 @@
                     
                 } catch (error) {
                     this.errors.push(`General error: ${error.message}`);
-                    // Always ensure we have comprehensive content
-                    this.allNews = this.generateComprehensiveFallbackNews();
+                    // Only use fallback as last resort
+                    if (this.allNews.length === 0) {
+                        this.allNews = this.generateComprehensiveFallbackNews();
+                    }
                 }
                 
                 this.isLoading = false;
@@ -1114,10 +1089,7 @@
                         
                         <div style="margin-bottom: 20px;">
                             <div style="color: #9ca3af; font-size: 14px; margin-bottom: 8px;">
-                                Categories (${filteredNews.length} articles) • App v2.1
-                                <span style="font-size: 12px; margin-left: 8px; color: #6b7280;">
-                                    ${/Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ? 'Mobile' : 'Desktop'} Mode
-                                </span>
+                                Categories (${filteredNews.length} articles)
                             </div>
                             <div class="category-container">
                                 ${this.categories.map(cat => `
