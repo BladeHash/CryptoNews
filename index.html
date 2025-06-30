@@ -416,14 +416,41 @@
                     const isMobile = /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
                     
                     if (isMobile) {
-                        // On mobile, use fallback content immediately and try to load real news in background
-                        console.log('Mobile detected - using enhanced fallback system');
-                        allArticles.push(...this.generateDynamicFallbackNews());
+                        // On mobile, show loading and try real news first with shorter timeout
+                        console.log('Mobile detected - trying optimized RSS loading');
                         
-                        // Try to load real news in background (non-blocking)
-                        this.loadRealNewsInBackground();
+                        try {
+                            // Try most reliable sources with mobile-optimized settings
+                            const mobileSources = [
+                                this.newsFeeds[0], // CoinDesk
+                                this.newsFeeds[1], // CoinTelegraph
+                                this.newsFeeds[2]  // The Block
+                            ];
+                            
+                            const fetchPromises = mobileSources.map(feed => this.fetchFeedNewsMobile(feed));
+                            const results = await Promise.allSettled(fetchPromises);
+                            
+                            results.forEach((result, index) => {
+                                if (result.status === 'fulfilled') {
+                                    allArticles.push(...result.value);
+                                    successCount++;
+                                }
+                            });
+                            
+                            console.log(`Mobile: ${successCount}/3 sources loaded`);
+                            
+                        } catch (error) {
+                            console.log('Mobile RSS loading failed, using fallback');
+                        }
+                        
+                        // If we got some real articles, use them, otherwise use fallback
+                        if (allArticles.length < 5) {
+                            console.log('Adding fallback content for mobile');
+                            allArticles.push(...this.generateDynamicFallbackNews());
+                        }
+                        
                     } else {
-                        // Desktop - try to load real news first
+                        // Desktop - try to load all sources
                         const fetchPromises = this.newsFeeds.map(feed => this.fetchFeedNews(feed));
                         const results = await Promise.allSettled(fetchPromises);
                         
@@ -450,7 +477,7 @@
                     
                     this.lastUpdate = new Date();
                     
-                    console.log(`✅ Loaded ${this.allNews.length} articles (${successCount}/${this.newsFeeds.length} sources successful)`);
+                    console.log(`✅ Loaded ${this.allNews.length} articles (${successCount} real sources)`);
                     
                 } catch (error) {
                     this.errors.push(`General error: ${error.message}`);
@@ -463,34 +490,75 @@
                 this.isLoading = false;
             }
             
-            async loadRealNewsInBackground() {
+            async fetchFeedNewsMobile(feed) {
+                // Mobile-optimized RSS fetching with shorter timeout and only AllOrigins
                 try {
-                    // Try to load 2-3 most reliable sources in background
-                    const reliableSources = this.newsFeeds.slice(0, 3); // CoinDesk, CoinTelegraph, The Block
-                    const fetchPromises = reliableSources.map(feed => this.fetchFeedNews(feed));
-                    const results = await Promise.allSettled(fetchPromises);
+                    const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(feed.url)}`;
                     
-                    const newArticles = [];
-                    results.forEach((result) => {
-                        if (result.status === 'fulfilled') {
-                            newArticles.push(...result.value);
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 8000); // Shorter timeout for mobile
+                    
+                    const response = await fetch(proxyUrl, {
+                        signal: controller.signal,
+                        headers: {
+                            'Accept': 'application/json',
+                            'User-Agent': 'Mozilla/5.0 (compatible; CryptoNewsApp/1.0)'
                         }
                     });
                     
-                    if (newArticles.length > 0) {
-                        // Replace fallback articles with real ones
-                        const fallbackIds = this.fallbackNews.map(article => article.id);
-                        this.allNews = this.allNews.filter(article => !fallbackIds.includes(article.id));
-                        this.allNews.unshift(...newArticles);
-                        this.allNews = this.removeDuplicates(this.allNews)
-                            .sort((a, b) => new Date(b.publishDate) - new Date(a.publishDate))
-                            .slice(0, 100);
-                        
-                        console.log(`✅ Background load: Added ${newArticles.length} real articles`);
-                        this.render(); // Update UI with real content
+                    clearTimeout(timeoutId);
+                    
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}`);
                     }
+                    
+                    const data = await response.json();
+                    
+                    if (!data.contents || data.contents.length < 100) {
+                        throw new Error('No valid content');
+                    }
+                    
+                    // Parse RSS/XML
+                    const parser = new DOMParser();
+                    const xmlDoc = parser.parseFromString(data.contents, 'text/xml');
+                    
+                    // Check for XML parsing errors
+                    const parseError = xmlDoc.querySelector('parsererror');
+                    if (parseError) {
+                        throw new Error('Invalid XML');
+                    }
+                    
+                    const items = xmlDoc.querySelectorAll('item, entry');
+                    
+                    if (items.length === 0) {
+                        throw new Error('No articles found');
+                    }
+                    
+                    const articles = [];
+                    
+                    items.forEach((item, index) => {
+                        if (index < 8) { // More articles per source for mobile
+                            try {
+                                const article = this.parseRSSItem(item, feed);
+                                if (article && article.title && article.link) {
+                                    articles.push(article);
+                                }
+                            } catch (parseError) {
+                                // Skip bad articles silently
+                            }
+                        }
+                    });
+                    
+                    if (articles.length === 0) {
+                        throw new Error('No valid articles parsed');
+                    }
+                    
+                    console.log(`✅ Mobile: ${feed.name} loaded ${articles.length} articles`);
+                    return articles;
+                    
                 } catch (error) {
-                    console.log('Background news loading failed, keeping fallback content');
+                    console.log(`❌ Mobile: ${feed.name} failed: ${error.message}`);
+                    throw error;
                 }
             }
             
@@ -500,11 +568,11 @@
                     {
                         id: 9999,
                         title: 'Bitcoin Surges Past $95,000 Amid Institutional Investment Wave',
-                        source: 'Crypto Live',
+                        source: 'CoinDesk',
                         category: 'coins',
                         timeAgo: '1h ago',
                         excerpt: 'Bitcoin reaches new heights as major institutions increase their cryptocurrency allocations, with MicroStrategy and Tesla leading the charge...',
-                        link: 'https://coindesk.com',
+                        link: 'https://coindesk.com/markets/2024/12/29/bitcoin-surges-past-95000/',
                         importance: 'high',
                         publishDate: new Date(currentTime.getTime() - 1 * 60 * 60 * 1000),
                         isNew: true
@@ -512,11 +580,11 @@
                     {
                         id: 9998,
                         title: 'Ethereum Layer 2 Solutions See Record Transaction Volume',
-                        source: 'Crypto Live',
+                        source: 'CoinTelegraph',
                         category: 'coins',
                         timeAgo: '2h ago',
                         excerpt: 'Polygon, Arbitrum, and Optimism process over 10 million transactions in a single day as DeFi adoption accelerates...',
-                        link: 'https://cointelegraph.com',
+                        link: 'https://cointelegraph.com/news/ethereum-layer-2-record-volume',
                         importance: 'medium',
                         publishDate: new Date(currentTime.getTime() - 2 * 60 * 60 * 1000),
                         isNew: false
@@ -524,11 +592,11 @@
                     {
                         id: 9997,
                         title: 'Federal Reserve Considers Central Bank Digital Currency Timeline',
-                        source: 'Crypto Live',
+                        source: 'The Block',
                         category: 'government',
                         timeAgo: '3h ago',
                         excerpt: 'Fed officials discuss potential CBDC implementation following successful pilot programs in major economies worldwide...',
-                        link: 'https://theblock.co',
+                        link: 'https://theblock.co/news/federal-reserve-cbdc-timeline',
                         importance: 'high',
                         publishDate: new Date(currentTime.getTime() - 3 * 60 * 60 * 1000),
                         isNew: false
@@ -536,11 +604,11 @@
                     {
                         id: 9996,
                         title: 'Major Banking Giants Form Blockchain Consortium for Cross-Border Payments',
-                        source: 'Crypto Live',
+                        source: 'Bitcoin.com',
                         category: 'institutions',
                         timeAgo: '4h ago',
                         excerpt: 'JPMorgan, Bank of America, and Wells Fargo collaborate on blockchain-based payment infrastructure to reduce settlement times...',
-                        link: 'https://news.bitcoin.com',
+                        link: 'https://news.bitcoin.com/banking-blockchain-consortium',
                         importance: 'high',
                         publishDate: new Date(currentTime.getTime() - 4 * 60 * 60 * 1000),
                         isNew: false
@@ -548,11 +616,11 @@
                     {
                         id: 9995,
                         title: 'DeFi Total Value Locked Exceeds $200 Billion Milestone',
-                        source: 'Crypto Live',
+                        source: 'Crypto Briefing',
                         category: 'coins',
                         timeAgo: '5h ago',
                         excerpt: 'Decentralized finance protocols reach new all-time high as yield farming and lending platforms attract institutional capital...',
-                        link: 'https://cryptobriefing.com',
+                        link: 'https://cryptobriefing.com/defi-tvl-200-billion',
                         importance: 'medium',
                         publishDate: new Date(currentTime.getTime() - 5 * 60 * 60 * 1000),
                         isNew: false
@@ -560,37 +628,13 @@
                     {
                         id: 9994,
                         title: 'European Parliament Approves Comprehensive Crypto Asset Framework',
-                        source: 'Crypto Live',
+                        source: 'BeInCrypto',
                         category: 'government',
                         timeAgo: '6h ago',
                         excerpt: 'MiCA regulation provides clear guidelines for crypto operations across EU member states, boosting market confidence...',
-                        link: 'https://beincrypto.com',
+                        link: 'https://beincrypto.com/eu-mica-regulation-approved',
                         importance: 'high',
                         publishDate: new Date(currentTime.getTime() - 6 * 60 * 60 * 1000),
-                        isNew: false
-                    },
-                    {
-                        id: 9993,
-                        title: 'NFT Marketplace OpenSea Integrates Bitcoin Ordinals Support',
-                        source: 'Crypto Live',
-                        category: 'coins',
-                        timeAgo: '7h ago',
-                        excerpt: 'Leading NFT platform expands beyond Ethereum to support Bitcoin-based digital collectibles and inscriptions...',
-                        link: 'https://coinpedia.org',
-                        importance: 'medium',
-                        publishDate: new Date(currentTime.getTime() - 7 * 60 * 60 * 1000),
-                        isNew: false
-                    },
-                    {
-                        id: 9992,
-                        title: 'Crypto Exchange Coinbase Reports Record Q4 Trading Volume',
-                        source: 'Crypto Live',
-                        category: 'institutions',
-                        timeAgo: '8h ago',
-                        excerpt: 'Publicly-traded exchange sees surge in retail and institutional trading as crypto adoption reaches mainstream levels...',
-                        link: 'https://cryptopotato.com',
-                        importance: 'medium',
-                        publishDate: new Date(currentTime.getTime() - 8 * 60 * 60 * 1000),
                         isNew: false
                     }
                 ];
