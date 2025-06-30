@@ -412,62 +412,27 @@
                     const allArticles = [];
                     let successCount = 0;
                     
-                    // Check if we're on mobile
-                    const isMobile = /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+                    // Always try to load real news first, regardless of device
+                    console.log('Loading real RSS feeds...');
                     
-                    if (isMobile) {
-                        // On mobile, show loading and try real news first with shorter timeout
-                        console.log('Mobile detected - trying optimized RSS loading');
-                        
-                        try {
-                            // Try most reliable sources with mobile-optimized settings
-                            const mobileSources = [
-                                this.newsFeeds[0], // CoinDesk
-                                this.newsFeeds[1], // CoinTelegraph
-                                this.newsFeeds[2]  // The Block
-                            ];
-                            
-                            const fetchPromises = mobileSources.map(feed => this.fetchFeedNewsMobile(feed));
-                            const results = await Promise.allSettled(fetchPromises);
-                            
-                            results.forEach((result, index) => {
-                                if (result.status === 'fulfilled') {
-                                    allArticles.push(...result.value);
-                                    successCount++;
-                                }
-                            });
-                            
-                            console.log(`Mobile: ${successCount}/3 sources loaded`);
-                            
-                        } catch (error) {
-                            console.log('Mobile RSS loading failed, using fallback');
+                    const fetchPromises = this.newsFeeds.map(feed => this.fetchFeedNews(feed));
+                    const results = await Promise.allSettled(fetchPromises);
+                    
+                    results.forEach((result, index) => {
+                        if (result.status === 'fulfilled') {
+                            allArticles.push(...result.value);
+                            successCount++;
+                        } else {
+                            this.errors.push(`${this.newsFeeds[index].name}: ${result.reason}`);
                         }
-                        
-                        // If we got some real articles, use them, otherwise use fallback
-                        if (allArticles.length < 5) {
-                            console.log('Adding fallback content for mobile');
-                            allArticles.push(...this.generateDynamicFallbackNews());
-                        }
-                        
-                    } else {
-                        // Desktop - try to load all sources
-                        const fetchPromises = this.newsFeeds.map(feed => this.fetchFeedNews(feed));
-                        const results = await Promise.allSettled(fetchPromises);
-                        
-                        results.forEach((result, index) => {
-                            if (result.status === 'fulfilled') {
-                                allArticles.push(...result.value);
-                                successCount++;
-                            } else {
-                                this.errors.push(`${this.newsFeeds[index].name}: ${result.reason}`);
-                            }
-                        });
-                        
-                        // If less than 3 sources loaded, add fallback content
-                        if (successCount < 3) {
-                            console.log('Adding fallback news due to low success rate');
-                            allArticles.push(...this.generateDynamicFallbackNews());
-                        }
+                    });
+                    
+                    console.log(`✅ Successfully loaded from ${successCount}/${this.newsFeeds.length} sources`);
+                    
+                    // Only use fallback if we have NO real articles at all
+                    if (allArticles.length === 0) {
+                        console.log('No real articles loaded - using fallback content');
+                        allArticles.push(...this.generateDynamicFallbackNews());
                     }
                     
                     // Sort by date (newest first) and remove duplicates
@@ -477,11 +442,11 @@
                     
                     this.lastUpdate = new Date();
                     
-                    console.log(`✅ Loaded ${this.allNews.length} articles (${successCount} real sources)`);
+                    console.log(`✅ Total articles loaded: ${this.allNews.length}`);
                     
                 } catch (error) {
                     this.errors.push(`General error: ${error.message}`);
-                    // Ensure we always have content
+                    // Only use fallback as last resort
                     if (this.allNews.length === 0) {
                         this.allNews = this.generateDynamicFallbackNews();
                     }
@@ -989,7 +954,7 @@
                     </div>
                     
                     <div style="padding: 0 20px;">
-                        ${this.errors.length > 0 && !(/Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)) ? `
+                        ${this.errors.length > 0 ? `
                             <div class="error-message">
                                 <div>⚠️ Some news sources temporarily unavailable (${this.errors.length}/${this.newsFeeds.length} failed)</div>
                                 <button class="retry-btn" onclick="app.updateNews()">Refresh Sources</button>
