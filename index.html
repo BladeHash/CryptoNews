@@ -324,94 +324,75 @@
             }
             
             async fetchFeedNews(feed) {
-                const proxyServices = [
-                    'https://api.allorigins.win/get?url=',
-                    'https://corsproxy.io/?'
-                ];
-                
-                for (let proxyIndex = 0; proxyIndex < proxyServices.length; proxyIndex++) {
-                    try {
-                        const proxy = proxyServices[proxyIndex];
-                        const proxyUrl = `${proxy}${encodeURIComponent(feed.url)}`;
-                        
-                        const controller = new AbortController();
-                        const timeoutId = setTimeout(() => controller.abort(), 15000);
-                        
-                        const response = await fetch(proxyUrl, {
-                            signal: controller.signal,
-                            headers: {
-                                'Accept': 'application/json, text/plain, */*',
-                                'User-Agent': 'Mozilla/5.0 (compatible; CryptoNewsApp/1.0)'
-                            }
-                        });
-                        
-                        clearTimeout(timeoutId);
-                        
-                        if (!response.ok) {
-                            throw new Error(`HTTP ${response.status}`);
+                try {
+                    // Use Vercel serverless function to proxy RSS (works on mobile!)
+                    const proxyUrl = `/api/rss?url=${encodeURIComponent(feed.url)}`;
+                    
+                    console.log(`Fetching ${feed.name} via server proxy...`);
+                    
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 15000);
+                    
+                    const response = await fetch(proxyUrl, {
+                        signal: controller.signal,
+                        cache: 'no-store', // Never cache RSS responses
+                        headers: {
+                            'Accept': 'application/xml, text/xml, */*'
                         }
-                        
-                        let data;
-                        const contentType = response.headers.get('content-type');
-                        
-                        if (contentType && contentType.includes('application/json')) {
-                            data = await response.json();
-                            if (data.contents) {
-                                data = data.contents;
-                            } else {
-                                throw new Error('No contents in JSON response');
-                            }
-                        } else {
-                            data = await response.text();
-                        }
-                        
-                        if (!data || data.length < 100) {
-                            throw new Error('Response too short');
-                        }
-                        
-                        // Parse RSS/XML
-                        const parser = new DOMParser();
-                        const xmlDoc = parser.parseFromString(data, 'text/xml');
-                        
-                        const parseError = xmlDoc.querySelector('parsererror');
-                        if (parseError) {
-                            throw new Error('Invalid RSS/XML');
-                        }
-                        
-                        const items = xmlDoc.querySelectorAll('item, entry');
-                        
-                        if (items.length === 0) {
-                            throw new Error('No articles found');
-                        }
-                        
-                        const articles = [];
-                        
-                        items.forEach((item, index) => {
-                            if (index < 12) {
-                                try {
-                                    const article = this.parseRSSItem(item, feed);
-                                    if (article && article.title && article.link) {
-                                        articles.push(article);
-                                    }
-                                } catch (parseError) {
-                                    // Skip bad articles silently
-                                }
-                            }
-                        });
-                        
-                        if (articles.length === 0) {
-                            throw new Error('No valid articles parsed');
-                        }
-                        
-                        console.log(`✅ ${feed.name}: ${articles.length} articles`);
-                        return articles;
-                        
-                    } catch (error) {
-                        if (proxyIndex === proxyServices.length - 1) {
-                            throw new Error(error.message);
-                        }
-                        continue;
+                    });
+                    
+                    clearTimeout(timeoutId);
+                    
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
                     }
+                    
+                    const xmlText = await response.text();
+                    
+                    if (!xmlText || xmlText.length < 100) {
+                        throw new Error('Empty RSS response');
+                    }
+                    
+                    // Parse RSS/XML
+                    const parser = new DOMParser();
+                    const xmlDoc = parser.parseFromString(xmlText, 'text/xml');
+                    
+                    const parseError = xmlDoc.querySelector('parsererror');
+                    if (parseError) {
+                        throw new Error('Invalid RSS/XML format');
+                    }
+                    
+                    const items = xmlDoc.querySelectorAll('item, entry');
+                    
+                    if (items.length === 0) {
+                        throw new Error('No articles found in feed');
+                    }
+                    
+                    const articles = [];
+                    
+                    items.forEach((item, index) => {
+                        if (index < 12) {
+                            try {
+                                const article = this.parseRSSItem(item, feed);
+                                if (article && article.title && article.link) {
+                                    articles.push(article);
+                                }
+                            } catch (parseError) {
+                                // Skip bad articles silently
+                            }
+                        }
+                    });
+                    
+                    if (articles.length === 0) {
+                        throw new Error('No valid articles could be parsed');
+                    }
+                    
+                    console.log(`✅ ${feed.name}: ${articles.length} articles loaded via server`);
+                    return articles;
+                    
+                } catch (error) {
+                    console.log(`❌ ${feed.name}: ${error.message}`);
+                    throw new Error(error.message);
                 }
             }
             
