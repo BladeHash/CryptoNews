@@ -1,5 +1,30 @@
-<!DOCTYPE html>
-<!-- Version 2.1.1 -->
+<script>
+        // Force clear all caches and service workers - run immediately
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.getRegistrations().then(function(registrations) {
+                for(let registration of registrations) {
+                    registration.unregister();
+                    console.log('Service Worker unregistered');
+                }
+            });
+        }
+        
+        // Clear all caches
+        if ('caches' in window) {
+            caches.keys().then(function(names) {
+                for (let name of names) {
+                    caches.delete(name);
+                    console.log('Cache deleted:', name);
+                }
+            });
+        }
+        
+        // Force reload after clearing caches
+        setTimeout(() => {
+            console.log('Force reloading page...');
+            window.location.reload(true);
+        }, 2000);
+    </script><!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
