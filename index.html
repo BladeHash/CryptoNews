@@ -6,7 +6,7 @@
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
-    <title>Crypto News - Live Updates</title>
+    <title>Crypto News - Live Updates v2.1</title>
     
     <!-- PWA Meta Tags -->
     <meta name="description" content="Latest cryptocurrency news and market updates">
@@ -1088,7 +1088,10 @@
                         
                         <div style="margin-bottom: 20px;">
                             <div style="color: #9ca3af; font-size: 14px; margin-bottom: 8px;">
-                                Categories (${filteredNews.length} articles)
+                                Categories (${filteredNews.length} articles) • App v2.1
+                                <span style="font-size: 12px; margin-left: 8px; color: #6b7280;">
+                                    ${/Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ? 'Mobile' : 'Desktop'} Mode
+                                </span>
                             </div>
                             <div class="category-container">
                                 ${this.categories.map(cat => `
