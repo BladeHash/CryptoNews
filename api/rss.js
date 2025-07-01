@@ -1,4 +1,5 @@
 // Vercel serverless function to proxy RSS feeds for mobile compatibility
+// test //
 export default async function handler(req, res) {
     // Enable CORS for all origins
     res.setHeader('Access-Control-Allow-Origin', '*');
